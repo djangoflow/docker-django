@@ -21,6 +21,7 @@ COPY --chown=django:django ./start /start
 COPY --chown=django:django ./celery/worker/start /start-celeryworker
 COPY --chown=django:django ./celery/beat/start /start-celerybeat
 COPY --chown=django:django ./celery/flower/start /start-flower
+COPY --chown=django:django ./asgi/daphne/start /start-daphne
 
 RUN mkdir /app && chown django:django /app
 
