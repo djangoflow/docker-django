@@ -6,4 +6,4 @@ set -o nounset
 
 python /app/manage.py collectstatic --noinput
 
-celery -A config.celery_app worker -l INFO
+celery -A config.celery_app worker -l INFO "$@"
