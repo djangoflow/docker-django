@@ -6,4 +6,6 @@ set -o nounset
 
 python /app/manage.py collectstatic --noinput
 
-celery -A config.celery_app worker -l INFO "$@"
+# --without-gossip --without-mingle because of this issue:
+# https://github.com/celery/celery/discussions/7276
+celery -A config.celery_app worker --without-gossip --without-mingle -l INFO "$@"
