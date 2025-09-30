@@ -24,9 +24,17 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
           username: ${{ secrets.DOCKER_USERNAME }}
 
-      - name: Build and push
+      - name: Build and push standard image
         uses: docker/build-push-action@v3
         with:
           push: true
           tags: djangoflow/docker-django:${{ github.ref_name }}
+          file: Dockerfile
+
+      - name: Build and push uv image
+        uses: docker/build-push-action@v3
+        with:
+          push: true
+          tags: djangoflow/docker-django:${{ github.ref_name }}-uv
+          file: Dockerfile.uv
 

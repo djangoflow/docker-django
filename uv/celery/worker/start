@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+uv run python /app/manage.py collectstatic --noinput
+
+# --without-gossip --without-mingle because of this issue:
+# https://github.com/celery/celery/discussions/7276
+uv run celery -A config.celery_app worker --without-gossip --without-mingle -l INFO "$@"
