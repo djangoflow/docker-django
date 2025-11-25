@@ -4,6 +4,7 @@ ENV PYTHONUNBUFFERED 1
 ENV PYTHONPATH=/app/src:/app/src/apps
 ENV PATH="/app/.venv/bin:$PATH"
 ENV HOME=/app
+ENV UV_CACHE_DIR=/tmp/uv-cache
 
 RUN apt-get update \
   # dependencies for building Python packages
