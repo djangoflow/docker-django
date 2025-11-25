@@ -2,6 +2,7 @@ FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED 1
 ENV PYTHONPATH=/app/src:/app/src/apps
+ENV PATH="/app/.venv/bin:$PATH"
 
 RUN apt-get update \
   # dependencies for building Python packages
