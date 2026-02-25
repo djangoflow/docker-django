@@ -1,9 +1,0 @@
-#!/bin/bash
-
-set -o errexit
-set -o pipefail
-set -o nounset
-
-uv run python /app/manage.py collectstatic --noinput
-
-uv run gunicorn config.wsgi --config /app/src/config/gunicorn.py --bind 0.0.0.0:5000 --chdir=/app

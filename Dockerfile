@@ -1,18 +1,24 @@
-FROM python:3.13-slim
+FROM python:3.14-slim
 
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src:/app/src/apps
+ENV PATH="/app/.venv/bin:$PATH"
+ENV HOME=/app
+ENV UV_CACHE_DIR=/tmp/uv-cache
 
 RUN apt-get update \
   # dependencies for building Python packages
   && apt-get install -y build-essential \
-  # psycopg2 dependencies
+  # psycopg dependencies
   && apt-get install -y libpq-dev \
   # Translations dependencies
   && apt-get install -y gettext curl git \
   # cleaning up unused files
   && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
   && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 RUN addgroup --system django \
     && adduser --system --ingroup django django
@@ -22,13 +28,13 @@ COPY --chown=django:django ./start /start
 COPY --chown=django:django ./celery/worker/start /start-celeryworker
 COPY --chown=django:django ./celery/beat/start /start-celerybeat
 COPY --chown=django:django ./celery/flower/start /start-flower
-COPY --chown=django:django ./asgi/daphne/start /start-daphne
+COPY --chown=django:django ./manage /usr/local/bin/manage
 
 RUN mkdir /app && chown django:django /app
 
 WORKDIR /app
 
-# Uncomment these line for testing
-# RUN pip install psycopg2-binary celery
+# Uncomment for testing:
+# RUN uv pip install --system psycopg gunicorn celery uvicorn
 
 ENTRYPOINT ["/entrypoint"]

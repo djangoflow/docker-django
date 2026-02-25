@@ -6,46 +6,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Docker base image for Django applications with support for multiple deployment configurations. The image is published to DockerHub as `djangoflow/docker-django`.
 
-Two variants are available:
-- **Standard** (`Dockerfile`): Uses pip/traditional Python package management
-  - Tags: `djangoflow/docker-django:<version>` (e.g., `3.13`)
-- **UV variant** (`Dockerfile.uv`): Uses uv for faster package management (drop-in replacement)
-  - Tags: `djangoflow/docker-django:<version>-uv` (e.g., `3.13-uv`)
-  - All scripts at standard paths use `uv run` internally
-  - Includes `manage` command in PATH for convenience (`manage migrate`, etc.)
+- Uses uv for fast Python package management
+- ASGI-only via Gunicorn + Uvicorn (handles both sync and async Django views)
+- Tags: `djangoflow/docker-django:<version>` (e.g., `3.14`)
+- Includes `manage` command in PATH for convenience (`manage migrate`, etc.)
 
 ## Image Architecture
 
-The Dockerfile creates a Python 3.13-slim based image with:
-- PostgreSQL database support (psycopg2)
+The Dockerfile creates a Python 3.14-slim based image with:
+- PostgreSQL database support (psycopg3)
 - Celery task queue support
-- ASGI server support (Daphne)
-- WSGI server support (Gunicorn)
+- ASGI server support (Gunicorn + Uvicorn)
 - Django user/group for non-root execution
+- uv for Python package management
 - Required build tools and translation dependencies
 
 Key environment variables:
 - `PYTHONUNBUFFERED=1`
 - `PYTHONPATH=/app/src:/app/src/apps`
+- `PATH="/app/.venv/bin:$PATH"`
+- `HOME=/app`
+- `UV_CACHE_DIR=/tmp/uv-cache`
 
 ## Entrypoint and Start Scripts
 
 **Entrypoint** (`/entrypoint`):
 - Waits for PostgreSQL to become available before proceeding
 - Constructs `DATABASE_URL` from environment variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`)
-- Uses Python with psycopg2 to verify database connectivity
+- Uses `uv run python` with psycopg3 to verify database connectivity
+- DATABASE_URL uses `postgresql://` scheme
 
-**Start Scripts** (all assume Django app is at `/app` with `manage.py` at `/app/manage.py`):
+**Start Scripts** (all assume Django app is at `/app` with `manage.py` at `/app/manage.py`, all use `uv run`):
 
-### Standard Start Scripts (pip-based)
-
-Located in root and subdirectories (`start`, `celery/worker/start`, etc.):
-
-1. `/start` - Main Django WSGI server:
+1. `/start` - Main Django ASGI server:
    - Runs `collectstatic --noinput`
-   - Starts Gunicorn with config at `/app/src/config/gunicorn.py`
+   - Starts Gunicorn with Uvicorn workers (`-k uvicorn.workers.UvicornWorker`)
+   - Config at `/app/src/config/gunicorn.py`
    - Binds to `0.0.0.0:5000`
-   - Expects Django settings at `config.wsgi`
+   - Expects ASGI application at `config.asgi:application`
 
 2. `/start-celeryworker` - Celery worker:
    - Runs `collectstatic --noinput`
@@ -61,37 +59,16 @@ Located in root and subdirectories (`start`, `celery/worker/start`, etc.):
    - Uses `CELERY_BROKER_URL`, `CELERY_FLOWER_USER`, `CELERY_FLOWER_PASSWORD` environment variables
    - Expects Celery app at `config.celery_app`
 
-5. `/start-daphne` - ASGI server:
-   - Starts Daphne ASGI server
-   - Binds to `0.0.0.0:5000`
-   - Expects ASGI application at `config.asgi:application`
+5. `manage` (in PATH) - `uv run python /app/manage.py` with arguments passed through
 
-### UV Start Scripts (uv-based)
-
-Located in `uv/` directory during build, but copied to standard paths in the UV image variant. All commands are prefixed with `uv run`:
-
-1. `/start` - `uv run gunicorn` and `uv run python manage.py`
-2. `/start-celeryworker` - `uv run celery worker`
-3. `/start-celerybeat` - `uv run celery beat`
-4. `/start-flower` - `uv run celery flower`
-5. `/start-daphne` - `uv run daphne`
-6. `manage` (in PATH) - `uv run python /app/manage.py` with arguments passed through
-
-**Benefits of UV variant:**
-- Faster dependency resolution and installation
-- Better disk space efficiency with cached packages
-- Works with existing `pyproject.toml` or `requirements.txt`
-- Commands run via `uv run` which auto-manages virtual environments
-- **Drop-in replacement**: Use `djangoflow/docker-django:3.13-uv` instead of `djangoflow/docker-django:3.13` with no other changes needed
-
-**Usage examples in UV variant:**
+**Usage examples:**
 ```bash
 # Direct manage.py commands
 manage migrate
 manage createsuperuser
 manage collectstatic
 
-# Same start scripts as standard variant
+# Start scripts
 /start
 /start-celeryworker
 ```
@@ -102,56 +79,38 @@ This image expects the Django project to follow this structure:
 ```
 /app/
 ├── manage.py
+├── pyproject.toml
 └── src/
     ├── config/
-    │   ├── wsgi.py          # WSGI application
-    │   ├── asgi.py          # ASGI application
-    │   ├── celery_app.py    # Celery configuration
-    │   └── gunicorn.py      # Gunicorn configuration
-    └── apps/                # Django apps directory
+    │   ├── asgi.py              # Required (for /start)
+    │   ├── celery_app.py        # Celery configuration
+    │   └── gunicorn.py          # Gunicorn configuration
+    └── apps/                    # Django apps directory
 ```
 
 ## Building and Publishing
 
-**Build locally (standard):**
+**Build locally:**
 ```bash
 docker build -t djangoflow/docker-django:test .
-```
-
-**Build locally (uv variant):**
-```bash
-docker build -f Dockerfile.uv -t djangoflow/docker-django:test-uv .
 ```
 
 **Publishing to DockerHub:**
 - Automated via GitHub Actions on tag push
 - Workflow: `.github/workflows/build.yml`
-- Creates multi-architecture builds (via QEMU and Buildx)
-- Builds **both variants** automatically:
-  - Standard: `djangoflow/docker-django:<git-tag>`
-  - UV variant: `djangoflow/docker-django:<git-tag>-uv`
+- Creates multi-architecture builds (linux/amd64, linux/arm64 via QEMU and Buildx)
 - Requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets
 
 **Manual publish:**
 ```bash
-git tag 3.13
-git push origin 3.13
+git tag 3.14
+git push origin 3.14
 ```
-
-This will automatically build and push:
-- `djangoflow/docker-django:3.13` (standard)
-- `djangoflow/docker-django:3.13-uv` (UV variant)
 
 ## Testing the Image
 
-**Standard variant:**
-1. Uncomment line 32 in Dockerfile: `RUN pip install psycopg2-binary celery`
+1. Uncomment the test line in Dockerfile: `RUN uv pip install --system psycopg gunicorn celery uvicorn`
 2. Build the image
-3. Run with appropriate environment variables for PostgreSQL connection
-
-**UV variant:**
-1. Uncomment line 37 in Dockerfile.uv: `RUN uv pip install --system psycopg2-binary celery`
-2. Build the image with `-f Dockerfile.uv`
 3. Run with appropriate environment variables for PostgreSQL connection
 
 ## Required Environment Variables
@@ -170,6 +129,6 @@ For Celery:
 
 ## Version History
 
-- Current: Python 3.13
-- Recent upgrades: 3.12 → 3.13 (commit 23ef320)
-- Previous: 3.11 → 3.12 (commit 6fa9042)
+- Current: Python 3.14, UV-only, ASGI-only (Gunicorn+Uvicorn), psycopg3
+- Breaking change: Removed pip variant, WSGI `/start`, Daphne `/start-daphne`
+- Previous: 3.13 (commit 3e12786), 3.12 → 3.13 (commit 23ef320)

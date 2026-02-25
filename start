@@ -4,6 +4,6 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-python /app/manage.py collectstatic --noinput
+uv run python /app/manage.py collectstatic --noinput
 
-/usr/local/bin/gunicorn config.wsgi --config /app/src/config/gunicorn.py --bind 0.0.0.0:5000 --chdir=/app
+uv run gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --config /app/src/config/gunicorn.py --bind 0.0.0.0:5000 --chdir=/app
